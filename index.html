@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Fugini — Mapa de Clientes</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #f0f2f5;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      min-height: 100vh;
+    }
+    .card {
+      background: white;
+      border-radius: 12px;
+      padding: 40px;
+      width: 100%;
+      max-width: 380px;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.10);
+    }
+    .logo { text-align: center; margin-bottom: 28px; }
+    .logo h1 { font-size: 22px; color: #1a1a2e; font-weight: 700; }
+    .logo p  { font-size: 13px; color: #888; margin-top: 4px; }
+    label { display: block; font-size: 13px; font-weight: 600; color: #444; margin-bottom: 6px; }
+    input {
+      width: 100%; padding: 10px 14px;
+      border: 1.5px solid #ddd; border-radius: 8px;
+      font-size: 14px; margin-bottom: 16px;
+      outline: none; transition: border 0.2s;
+    }
+    input:focus { border-color: #e74c3c; }
+    button {
+      width: 100%; padding: 12px;
+      background: #e74c3c; color: white;
+      border: none; border-radius: 8px;
+      font-size: 15px; font-weight: 600;
+      cursor: pointer; transition: background 0.2s;
+    }
+    button:hover { background: #c0392b; }
+    .erro {
+      display: none; margin-top: 14px;
+      padding: 10px 14px; background: #fdecea;
+      border-radius: 8px; color: #c0392b;
+      font-size: 13px; text-align: center;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo">
+      <h1>Fugini Alimentos</h1>
+      <p>Mapa de Clientes Disponíveis</p>
+    </div>
+    <label for="usuario">Usuário</label>
+    <input type="text" id="usuario" placeholder="seu usuário" autocomplete="username">
+    <label for="senha">Senha</label>
+    <input type="password" id="senha" placeholder="sua senha" autocomplete="current-password">
+    <button onclick="entrar()">Entrar</button>
+    <div class="erro" id="erro">Usuário ou senha incorretos.</div>
+  </div>
+  <script>
+    const USUARIOS = {
+  "vendedor1": {
+    "senha": "fugini@area1",
+    "arquivo": "area1.html"
+  },
+  "vendedor2": {
+    "senha": "fugini@area2",
+    "arquivo": "area2.html"
+  },
+  "vendedor3": {
+    "senha": "fugini@area3",
+    "arquivo": "area3.html"
+  },
+  "vendedor4": {
+    "senha": "fugini@area4",
+    "arquivo": "area4.html"
+  },
+  "master": {
+    "senha": "fugini@master",
+    "arquivo": "master.html"
+  }
+};
+    function entrar() {
+      const usuario = document.getElementById('usuario').value.trim().toLowerCase();
+      const senha   = document.getElementById('senha').value.trim();
+      const erro    = document.getElementById('erro');
+      if (USUARIOS[usuario] && USUARIOS[usuario].senha === senha) {
+        window.location.href = USUARIOS[usuario].arquivo;
+      } else {
+        erro.style.display = 'block';
+      }
+    }
+    document.getElementById('senha').addEventListener('keydown', function(e) {
+      if (e.key === 'Enter') entrar();
+    });
+  </script>
+</body>
+</html>
