@@ -79,16 +79,69 @@
     "arquivo": "master.html"
   }
 };
-    function entrar() {
+
+    function b64ToBytes(b64) {
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }
+
+    async function descriptografarEExibir(arquivo, senha) {
+      const resp    = await fetch(arquivo);
+      const texto   = await resp.text();
+      const parser  = new DOMParser();
+      const doc     = parser.parseFromString(texto, 'text/html');
+      const scripts = doc.querySelectorAll('script');
+
+      let conteudoB64, saltB64, ivB64;
+      scripts.forEach(s => {
+        const m1 = s.textContent.match(/CONTEUDO_B64\s*=\s*"([^"]+)"/);
+        const m2 = s.textContent.match(/SALT_B64\s*=\s*"([^"]+)"/);
+        const m3 = s.textContent.match(/IV_B64\s*=\s*"([^"]+)"/);
+        if (m1) conteudoB64 = m1[1];
+        if (m2) saltB64     = m2[1];
+        if (m3) ivB64       = m3[1];
+      });
+
+      const enc    = new TextEncoder();
+      const keyMat = await crypto.subtle.importKey(
+        "raw", enc.encode(senha), "PBKDF2", false, ["deriveKey"]
+      );
+      const chave = await crypto.subtle.deriveKey(
+        { name: "PBKDF2", salt: b64ToBytes(saltB64), iterations: 100000, hash: "SHA-256" },
+        keyMat,
+        { name: "AES-CBC", length: 256 },
+        false, ["decrypt"]
+      );
+      const decriptado = await crypto.subtle.decrypt(
+        { name: "AES-CBC", iv: b64ToBytes(ivB64) },
+        chave,
+        b64ToBytes(conteudoB64)
+      );
+      const html = new TextDecoder().decode(decriptado);
+      document.open();
+      document.write(html);
+      document.close();
+    }
+
+    async function entrar() {
       const usuario = document.getElementById('usuario').value.trim().toLowerCase();
       const senha   = document.getElementById('senha').value.trim();
       const erro    = document.getElementById('erro');
+      erro.style.display = 'none';
+
       if (USUARIOS[usuario] && USUARIOS[usuario].senha === senha) {
-        window.location.href = USUARIOS[usuario].arquivo;
+        try {
+          await descriptografarEExibir(USUARIOS[usuario].arquivo, senha);
+        } catch(e) {
+          erro.style.display = 'block';
+        }
       } else {
         erro.style.display = 'block';
       }
     }
+
     document.getElementById('senha').addEventListener('keydown', function(e) {
       if (e.key === 'Enter') entrar();
     });
