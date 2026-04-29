@@ -1,0 +1,30 @@
+# Variáveis de ambiente — NUNCA commitar
+config/.env
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+.venv/
+venv/
+env/
+
+# Dados sensíveis
+data/input/
+data/output/
+*.xlsx
+*.csv
+
+# HTMLs gerados
+output/
+
+# VS Code
+.vscode/
+
+# Windows
+Thumbs.db
+desktop.ini
+
+# Logs
+pipeline.log
