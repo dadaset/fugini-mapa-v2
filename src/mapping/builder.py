@@ -1,10 +1,10 @@
 # ============================================================
 # src/mapping/builder.py
-# Gera os mapas HTML com Folium e criptografa com PageCrypt.
+# Monta mapas Folium e exporta HTMLs.
+# Criptografia delegada para src/mapping/crypto.py.
 # ============================================================
 
 import logging
-import subprocess
 import json
 from pathlib import Path
 
@@ -12,11 +12,8 @@ import folium
 import folium.plugins
 import pandas as pd
 
-from config.settings import (
-    CORES_AREAS,
-    COR_FORA_GRANDE_SP,
-    USUARIOS_MAPA,
-)
+from config.settings import CORES_AREAS, COR_FORA_GRANDE_SP, USUARIOS_MAPA
+from src.mapping.crypto import criptografar_html
 
 logger = logging.getLogger(__name__)
 
@@ -141,37 +138,14 @@ def montar_mapa(
 
 
 # ============================================================
-# PAGECRYPT
-# ============================================================
-
-def _instalar_pagecrypt():
-    """Instala pagecrypt via npm se não estiver disponível."""
-    try:
-        subprocess.run(["pagecrypt", "--version"], capture_output=True, check=True)
-    except (subprocess.CalledProcessError, FileNotFoundError):
-        logger.info("Instalando pagecrypt via npm...")
-        subprocess.run(["npm", "install", "-g", "pagecrypt"], check=True)
-
-
-def criptografar_html(path_input: Path, path_output: Path, senha: str):
-    """Criptografa um HTML com PageCrypt."""
-    _instalar_pagecrypt()
-    subprocess.run(
-        ["pagecrypt", str(path_input), str(path_output), senha],
-        check=True,
-    )
-    logger.info(f"  Criptografado: {path_output.name}")
-
-
-# ============================================================
 # INDEX.HTML
 # ============================================================
 
 def gerar_index_html() -> str:
-    """Gera o HTML da página de login."""
+    """Gera o HTML da página de login que redireciona para o arquivo correto."""
+    # Só expõe o mapeamento usuário → arquivo, SEM senhas
     usuarios_js = json.dumps(
-        {u: {"senha": d["senha"], "arquivo": d["arquivo"]}
-         for u, d in USUARIOS_MAPA.items()},
+        {u: d["arquivo"] for u, d in USUARIOS_MAPA.items()},
         ensure_ascii=False,
         indent=2,
     )
@@ -186,17 +160,12 @@ def gerar_index_html() -> str:
     body {{
       font-family: 'Segoe UI', sans-serif;
       background: #f0f2f5;
-      display: flex;
-      align-items: center;
-      justify-content: center;
+      display: flex; align-items: center; justify-content: center;
       min-height: 100vh;
     }}
     .card {{
-      background: white;
-      border-radius: 12px;
-      padding: 40px;
-      width: 100%;
-      max-width: 380px;
+      background: white; border-radius: 12px; padding: 40px;
+      width: 100%; max-width: 380px;
       box-shadow: 0 4px 24px rgba(0,0,0,0.10);
     }}
     .logo {{ text-align: center; margin-bottom: 28px; }}
@@ -219,10 +188,9 @@ def gerar_index_html() -> str:
     }}
     button:hover {{ background: #c0392b; }}
     .erro {{
-      display: none; margin-top: 14px;
-      padding: 10px 14px; background: #fdecea;
-      border-radius: 8px; color: #c0392b;
-      font-size: 13px; text-align: center;
+      display: none; margin-top: 14px; padding: 10px 14px;
+      background: #fdecea; border-radius: 8px;
+      color: #c0392b; font-size: 13px; text-align: center;
     }}
   </style>
 </head>
@@ -240,17 +208,73 @@ def gerar_index_html() -> str:
     <div class="erro" id="erro">Usuário ou senha incorretos.</div>
   </div>
   <script>
-    const USUARIOS = {usuarios_js};
-    function entrar() {{
+    // Apenas mapeamento usuário → arquivo. Nenhuma senha aqui.
+    const ARQUIVOS = {usuarios_js};
+
+    function b64ToBytes(b64) {{
+      const bin = atob(b64);
+      const arr = new Uint8Array(bin.length);
+      for (let i = 0; i < bin.length; i++) arr[i] = bin.charCodeAt(i);
+      return arr;
+    }}
+
+    async function descriptografarEExibir(arquivo, senha) {{
+      const resp   = await fetch(arquivo);
+      const texto  = await resp.text();
+      const parser = new DOMParser();
+      const doc    = parser.parseFromString(texto, 'text/html');
+
+      let conteudoB64, saltB64, ivB64;
+      doc.querySelectorAll('script').forEach(s => {{
+        const m1 = s.textContent.match(/CONTEUDO_B64\s*=\s*"([^"]+)"/);
+        const m2 = s.textContent.match(/SALT_B64\s*=\s*"([^"]+)"/);
+        const m3 = s.textContent.match(/IV_B64\s*=\s*"([^"]+)"/);
+        if (m1) conteudoB64 = m1[1];
+        if (m2) saltB64     = m2[1];
+        if (m3) ivB64       = m3[1];
+      }});
+
+      const enc    = new TextEncoder();
+      const keyMat = await crypto.subtle.importKey(
+        "raw", enc.encode(senha), "PBKDF2", false, ["deriveKey"]
+      );
+      const chave = await crypto.subtle.deriveKey(
+        {{ name: "PBKDF2", salt: b64ToBytes(saltB64), iterations: 100000, hash: "SHA-256" }},
+        keyMat,
+        {{ name: "AES-CBC", length: 256 }},
+        false, ["decrypt"]
+      );
+      const decriptado = await crypto.subtle.decrypt(
+        {{ name: "AES-CBC", iv: b64ToBytes(ivB64) }},
+        chave,
+        b64ToBytes(conteudoB64)
+      );
+      const html = new TextDecoder().decode(decriptado);
+      document.open();
+      document.write(html);
+      document.close();
+    }}
+
+    async function entrar() {{
       const usuario = document.getElementById('usuario').value.trim().toLowerCase();
       const senha   = document.getElementById('senha').value.trim();
       const erro    = document.getElementById('erro');
-      if (USUARIOS[usuario] && USUARIOS[usuario].senha === senha) {{
-        window.location.href = USUARIOS[usuario].arquivo;
-      }} else {{
+      erro.style.display = 'none';
+
+      const arquivo = ARQUIVOS[usuario];
+      if (!arquivo) {{
+        erro.style.display = 'block';
+        return;
+      }}
+
+      try {{
+        // Tenta descriptografar — se a senha estiver errada, AES falha e cai no catch
+        await descriptografarEExibir(arquivo, senha);
+      }} catch(e) {{
         erro.style.display = 'block';
       }}
     }}
+
     document.getElementById('senha').addEventListener('keydown', function(e) {{
       if (e.key === 'Enter') entrar();
     }});
@@ -263,11 +287,18 @@ def gerar_index_html() -> str:
 # EXPORTAR TUDO
 # ============================================================
 
-def _salvar_html(mapa: folium.Map, path_raw: Path, path_out: Path, senha: str | None, criptografar: bool):
+def _salvar_html(
+    mapa: folium.Map,
+    path_raw: Path,
+    path_out: Path,
+    senha: str | None,
+    criptografar: bool,
+):
     """Salva um mapa HTML, criptografando se necessário."""
     mapa.save(str(path_raw))
     if criptografar and senha:
         criptografar_html(path_raw, path_out, senha)
+        logger.info(f"  Criptografado: {path_out.name}")
         path_raw.unlink()
     else:
         if path_out.exists():
@@ -275,10 +306,14 @@ def _salvar_html(mapa: folium.Map, path_raw: Path, path_out: Path, senha: str | 
         path_raw.rename(path_out)
 
 
-def exportar_mapas(df_mapa: pd.DataFrame, geojson_grande_sp: dict, criptografar: bool = True) -> dict:
+def exportar_mapas(
+    df_mapa: pd.DataFrame,
+    geojson_grande_sp: dict,
+    criptografar: bool = True,
+) -> dict:
     """
     Gera e salva todos os HTMLs em data/output/.
-    Se criptografar=True, aplica PageCrypt em cada mapa.
+    Se criptografar=True, aplica AES-256-CBC em cada mapa.
     O index.html nunca é criptografado.
     """
     arquivos = {}
