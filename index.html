@@ -57,27 +57,13 @@
     <div class="erro" id="erro">Usuário ou senha incorretos.</div>
   </div>
   <script>
-    const USUARIOS = {
-  "vendedor1": {
-    "senha": "fugini@area1",
-    "arquivo": "area1.html"
-  },
-  "vendedor2": {
-    "senha": "fugini@area2",
-    "arquivo": "area2.html"
-  },
-  "vendedor3": {
-    "senha": "fugini@area3",
-    "arquivo": "area3.html"
-  },
-  "vendedor4": {
-    "senha": "fugini@area4",
-    "arquivo": "area4.html"
-  },
-  "master": {
-    "senha": "fugini@master",
-    "arquivo": "master.html"
-  }
+    // Apenas mapeamento usuário → arquivo. Nenhuma senha aqui.
+    const ARQUIVOS = {
+  "vendedor1": "area1.html",
+  "vendedor2": "area2.html",
+  "vendedor3": "area3.html",
+  "vendedor4": "area4.html",
+  "master": "master.html"
 };
 
     function b64ToBytes(b64) {
@@ -88,14 +74,13 @@
     }
 
     async function descriptografarEExibir(arquivo, senha) {
-      const resp    = await fetch(arquivo);
-      const texto   = await resp.text();
-      const parser  = new DOMParser();
-      const doc     = parser.parseFromString(texto, 'text/html');
-      const scripts = doc.querySelectorAll('script');
+      const resp   = await fetch(arquivo);
+      const texto  = await resp.text();
+      const parser = new DOMParser();
+      const doc    = parser.parseFromString(texto, 'text/html');
 
       let conteudoB64, saltB64, ivB64;
-      scripts.forEach(s => {
+      doc.querySelectorAll('script').forEach(s => {
         const m1 = s.textContent.match(/CONTEUDO_B64\s*=\s*"([^"]+)"/);
         const m2 = s.textContent.match(/SALT_B64\s*=\s*"([^"]+)"/);
         const m3 = s.textContent.match(/IV_B64\s*=\s*"([^"]+)"/);
@@ -131,13 +116,16 @@
       const erro    = document.getElementById('erro');
       erro.style.display = 'none';
 
-      if (USUARIOS[usuario] && USUARIOS[usuario].senha === senha) {
-        try {
-          await descriptografarEExibir(USUARIOS[usuario].arquivo, senha);
-        } catch(e) {
-          erro.style.display = 'block';
-        }
-      } else {
+      const arquivo = ARQUIVOS[usuario];
+      if (!arquivo) {
+        erro.style.display = 'block';
+        return;
+      }
+
+      try {
+        // Tenta descriptografar — se a senha estiver errada, AES falha e cai no catch
+        await descriptografarEExibir(arquivo, senha);
+      } catch(e) {
         erro.style.display = 'block';
       }
     }
