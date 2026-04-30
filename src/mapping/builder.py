@@ -12,7 +12,7 @@ import folium
 import folium.plugins
 import pandas as pd
 
-from config.settings import CORES_AREAS, COR_FORA_GRANDE_SP, USUARIOS_MAPA
+from config.settings import CORES_AREAS, USUARIOS_MAPA
 from src.mapping.crypto import criptografar_html
 
 logger = logging.getLogger(__name__)
@@ -33,8 +33,9 @@ def montar_mapa(
     """
     Monta mapa Folium com marcadores por área.
 
-    areas_visiveis=None  → todas as áreas + fora + heatmap (master)
+    areas_visiveis=None  → todas as áreas + heatmap (master)
     areas_visiveis=[...] → só as áreas listadas
+    Clientes fora da Grande SP são sempre omitidos.
     """
     mapa = folium.Map(
         location=[-23.55, -46.63],
@@ -42,6 +43,7 @@ def montar_mapa(
         tiles="CartoDB positron",
     )
 
+    # Limites municipais da Grande SP
     folium.GeoJson(
         geojson_grande_sp,
         name="Limites dos municípios",
@@ -51,7 +53,6 @@ def montar_mapa(
             "weight":      2,
             "fillOpacity": 0.15,
         },
-        tooltip=folium.GeoJsonTooltip(fields=["name"], aliases=["Município:"]),
         show=True,
     ).add_to(mapa)
 
@@ -60,6 +61,7 @@ def montar_mapa(
         else {k: v for k, v in CORES_AREAS.items() if k in areas_visiveis}
     )
 
+    # Marcadores por área — só clientes com área atribuída
     for area_nome, cores in cores_iter.items():
         fg = folium.FeatureGroup(name=area_nome, show=True)
         clientes_area = df_mapa[df_mapa["area_nome"] == area_nome]
@@ -92,40 +94,15 @@ def montar_mapa(
 
         fg.add_to(mapa)
 
-    # Fora da Grande SP — só no master
-    if areas_visiveis is None:
-        fg_fora = folium.FeatureGroup(name="Fora da Grande SP", show=True)
-        for _, row in df_mapa[df_mapa["area_nome"].isna()].iterrows():
-            nome   = row.get("nome_cliente",   "N/D")
-            cod    = row.get("cod_cliente",    "N/D")
-            cidade = row.get("nome_municipio", "N/D")
-            popup_html = f"""
-            <div style="font-family:Arial;font-size:12px;min-width:180px">
-                <b>{nome}</b><br>
-                <span style="color:#666">Cód: {cod}</span><br>
-                <span style="color:#666">{cidade}</span><br>
-                <span style="color:#7f8c8d"><b>Fora da Grande SP</b></span>
-            </div>
-            """
-            folium.CircleMarker(
-                location=[row["lat_final"], row["lng_final"]],
-                radius=5,
-                color=COR_FORA_GRANDE_SP["marker"],
-                fill=True,
-                fill_color=COR_FORA_GRANDE_SP["fill"],
-                fill_opacity=0.7,
-                popup=folium.Popup(popup_html, max_width=250),
-                tooltip=folium.Tooltip(f"{nome} (Fora da Grande SP)"),
-            ).add_to(fg_fora)
-        fg_fora.add_to(mapa)
-
-    # Heatmap — só no master
+    # Heatmap — só no master, só clientes com área atribuída
     if areas_visiveis is None:
         fg_heat = folium.FeatureGroup(name="Heatmap Crédito Disponível", show=False)
         heat_data = [
             [row["lat_final"], row["lng_final"], row["limite_disp"]]
             for _, row in df_mapa[
-                df_mapa["limite_disp"].notna() & (df_mapa["limite_disp"] > 0)
+                df_mapa["limite_disp"].notna() &
+                (df_mapa["limite_disp"] > 0) &
+                df_mapa["area_nome"].notna()
             ].iterrows()
         ]
         folium.plugins.HeatMap(
@@ -142,8 +119,12 @@ def montar_mapa(
 # ============================================================
 
 def gerar_index_html() -> str:
-    """Gera o HTML da página de login que redireciona para o arquivo correto."""
-    # Só expõe o mapeamento usuário → arquivo, SEM senhas
+    """
+    Gera o HTML da página de login.
+    Expõe apenas o mapeamento usuário → arquivo.
+    Nenhuma senha é incluída — a validação ocorre pela
+    tentativa de descriptografia AES no navegador.
+    """
     usuarios_js = json.dumps(
         {u: d["arquivo"] for u, d in USUARIOS_MAPA.items()},
         ensure_ascii=False,
@@ -268,7 +249,7 @@ def gerar_index_html() -> str:
       }}
 
       try {{
-        // Tenta descriptografar — se a senha estiver errada, AES falha e cai no catch
+        // Tenta descriptografar — senha errada faz AES falhar e cai no catch
         await descriptografarEExibir(arquivo, senha);
       }} catch(e) {{
         erro.style.display = 'block';
