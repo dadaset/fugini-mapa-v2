@@ -123,7 +123,6 @@
       }
 
       try {
-        // Tenta descriptografar — senha errada faz AES falhar e cai no catch
         await descriptografarEExibir(arquivo, senha);
       } catch(e) {
         erro.style.display = 'block';
