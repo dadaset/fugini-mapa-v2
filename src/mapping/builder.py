@@ -43,6 +43,13 @@ def montar_mapa(
         tiles="CartoDB positron",
     )
 
+    # CSS que desabilita eventos de ponteiro no pane do GeoJson (overlayPane).
+    # Isso evita que o GeoJson intercepte cliques nos marcadores após toggle
+    # no layer control. Os marcadores ficam no markerPane, acima do overlayPane.
+    mapa.get_root().html.add_child(folium.Element(
+        "<style>.leaflet-overlay-pane { pointer-events: none !important; }</style>"
+    ))
+
     # Limites municipais da Grande SP
     folium.GeoJson(
         geojson_grande_sp,
@@ -53,6 +60,7 @@ def montar_mapa(
             "weight":      2,
             "fillOpacity": 0.15,
         },
+        interactive=False,
         show=True,
     ).add_to(mapa)
 
